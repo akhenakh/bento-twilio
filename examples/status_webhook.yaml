@@ -1,0 +1,25 @@
+# Twilio status callbacks and inbound SMS messages are POSTed to the same URL.
+#
+# Configure both the output's status_callback and the Twilio phone number (or
+# Messaging Service) inbound webhook to point at:
+#
+#   https://example.com/twilio/webhook
+#
+# The URL configured below must match exactly, including the scheme and host,
+# because it is part of the signed payload.
+#
+# The signature is verified with the TWILIO_AUTH_TOKEN environment variable.
+
+input:
+  http_server:
+    path: /twilio/webhook
+
+pipeline:
+  processors:
+    - twilio_webhook:
+        url: https://example.com/twilio/webhook
+
+output:
+  nats:
+    urls: [ nats://localhost:4222 ]
+    subject: twilio.events

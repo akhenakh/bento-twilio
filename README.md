@@ -3,7 +3,9 @@
 A custom [Bento](https://github.com/warpstreamlabs/bento) plugin adding a
 `twilio_sms` output that sends SMS and MMS messages through the
 [Twilio Messages API](https://www.twilio.com/docs/messaging/api/message-resource#create-a-message-resource)
-using [`github.com/twilio/twilio-go`](https://github.com/twilio/twilio-go).
+using [`github.com/twilio/twilio-go`](https://github.com/twilio/twilio-go), and
+a `twilio_webhook` processor that validates Twilio status callbacks and inbound
+SMS webhooks.
 
 ## Features
 
@@ -15,6 +17,9 @@ using [`github.com/twilio/twilio-go`](https://github.com/twilio/twilio-go).
   with optional link shortening and an RCS fallback sender.
 * **Delivery status callbacks** — point Twilio at a status callback URL so
   delivery updates can be routed back into Bento.
+* **Webhook feedback loop** — the `twilio_webhook` processor verifies Twilio
+  signatures and turns status callbacks and inbound SMS (including
+  `STOP`/`START`/`HELP`) into JSON events for any downstream component.
 * **Go templates everywhere** — `from`, `to`, `body`, `media_urls`,
   `status_callback`, `fallback_from` and `content_variables` are all rendered
   as [Go templates](https://pkg.go.dev/text/template) against the message
@@ -138,10 +143,11 @@ content_variables: '{"1":"{{ .name }}","2":"{{ .code }}"}'
 The rendered value must be valid JSON; invalid JSON causes the write to fail
 before any request is made.
 
-### Delivery status callbacks
+### Delivery feedback and opt-outs
 
-Set `status_callback` to a URL that Twilio can reach. Delivery updates can then
-be received with a Bento `http_server` input and routed wherever you need them:
+Set `status_callback` on the output to collect asynchronous delivery updates,
+and configure the Twilio phone number (or Messaging Service) inbound webhook to
+send `STOP`/`START`/`HELP` messages to the same endpoint:
 
 ```yaml
 output:
@@ -149,8 +155,80 @@ output:
     from: "+15551234567"
     to: '{{ .phone }}'
     body: "Hello"
-    status_callback: https://example.com/twilio/status
+    status_callback: https://example.com/twilio/webhook
 ```
+
+On the receiving side, run an `http_server` input through the `twilio_webhook`
+processor. The processor verifies the `X-Twilio-Signature` header and replaces
+the form payload with a JSON event that any downstream component can consume:
+
+```yaml
+input:
+  http_server:
+    path: /twilio/webhook
+
+pipeline:
+  processors:
+    - twilio_webhook:
+        # Must match the public URL configured in Twilio exactly, including
+        # scheme, host, path and query string.
+        url: https://example.com/twilio/webhook
+
+output:
+  nats:
+    urls: [ nats://localhost:4222 ]
+    subject: twilio.events
+```
+
+The downstream output is deliberately not Twilio-specific: swap `nats` for
+`kafka`, `redis`, `sql_insert` or any other Bento output.
+
+The processor reads `TWILIO_AUTH_TOKEN` when `auth_token` is omitted. Requests
+with a missing or invalid signature, an unparseable body or an unknown payload
+are dropped and logged; Twilio still receives a success response, so it does
+not retry them. Use `kind: status` or `kind: inbound` to force a payload type
+when you need to.
+
+Status callbacks become events such as:
+
+```json
+{
+  "type": "status",
+  "message_sid": "SM...",
+  "account_sid": "AC...",
+  "from": "+15551234567",
+  "to": "+15550000000",
+  "status": "undelivered",
+  "error_code": 30003,
+  "error_message": "Unreachable destination handset",
+  "api_version": "2010-04-01"
+}
+```
+
+Inbound messages become events such as:
+
+```json
+{
+  "type": "inbound",
+  "message_sid": "SM...",
+  "account_sid": "AC...",
+  "from": "+15550000000",
+  "to": "+15551234567",
+  "status": "received",
+  "body": "STOP",
+  "opt_out_type": "STOP",
+  "api_version": "2010-04-01"
+}
+```
+
+`error_code`, `error_message` and `opt_out_type` are omitted when absent. The
+processor does not store any state: route events into your cache, Redis, SQL or
+another service, and filter opted-out recipients before the `twilio_sms`
+output. Twilio's Messaging Service Advanced Opt-Out remains the server-side
+backstop and rejects sends with error `21610`.
+
+Only form-encoded SMS webhooks are processed; media URLs from inbound MMS are
+ignored and only the text body is extracted.
 
 ## Credentials
 

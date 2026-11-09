@@ -3,7 +3,7 @@ version: "3"
 vars:
   BIN: bin/bento-twilio
   LDFLAGS: -s -w
-  CONFIGS: workflow.yaml examples/mms.yaml examples/content_template.yaml
+  CONFIGS: workflow.yaml examples/mms.yaml examples/content_template.yaml examples/status_webhook.yaml
 
 tasks:
   build:
