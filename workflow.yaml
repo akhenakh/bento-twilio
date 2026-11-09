@@ -1,0 +1,23 @@
+# Example workflow: send an SMS for every generated alert.
+#
+# The Twilio credentials are read from the TWILIO_ACCOUNT_SID and
+# TWILIO_AUTH_TOKEN environment variables, and the sender from the
+# TWILIO_FROM_NUMBER variable used by the mapping below.
+
+input:
+  generate:
+    mapping: |
+      root.phone = env("TWILIO_TO_NUMBER").or("+15550000000")
+      root.site = "example.org"
+      root.message = "CPU usage is above 90%"
+    interval: 30s
+    count: 1
+
+pipeline:
+  processors: []
+
+output:
+  twilio_sms:
+    from: '{{ env "TWILIO_FROM_NUMBER" }}'
+    to: '{{ .phone }}'
+    body: 'Alert for {{ .site }}: {{ .message }}'

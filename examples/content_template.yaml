@@ -1,0 +1,24 @@
+# Example: send a pre-approved Content API template instead of a plain body.
+#
+# Content templates are required for WhatsApp and useful for SMS when the text
+# is managed centrally in the Twilio console. The account SID and auth token
+# come from TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN.
+
+input:
+  generate:
+    mapping: |
+      root.phone = env("TWILIO_TO_NUMBER").or("+15550000000")
+      root.name = "Fabrice"
+      root.code = "ABC123"
+    interval: 1m
+    count: 1
+
+pipeline:
+  processors: []
+
+output:
+  twilio_sms:
+    messaging_service_sid: MGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    to: '{{ .phone }}'
+    content_sid: HXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    content_variables: '{"1":"{{ .name }}","2":"{{ .code }}"}'

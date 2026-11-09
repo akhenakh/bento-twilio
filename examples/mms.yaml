@@ -1,0 +1,26 @@
+# Example: send an MMS with a media attachment and delivery status callbacks.
+#
+# Credentials come from TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN, and the
+# sender from TWILIO_FROM_NUMBER.
+
+input:
+  generate:
+    mapping: |
+      root.phone = env("TWILIO_TO_NUMBER").or("+15550000000")
+      root.site = "example.org"
+      root.chart = "https://example.com/chart.png"
+    interval: 5m
+    count: 1
+
+pipeline:
+  processors: []
+
+output:
+  twilio_sms:
+    from: '{{ env "TWILIO_FROM_NUMBER" }}'
+    to: '{{ .phone }}'
+    body: 'CPU alert for {{ .site }}, see the attached chart.'
+    media_urls:
+      - '{{ .chart }}'
+    status_callback: 'https://example.com/twilio/status'
+    validity_period: 3600

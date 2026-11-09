@@ -1,0 +1,31 @@
+name: Test
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Unit tests
+        run: go test ./...
+
+      - name: End-to-end tests
+        run: go test -tags e2e -count=1 ./sms/
+
+      - name: Build
+        run: CGO_ENABLED=0 go build -trimpath -o bin/bento-twilio .
+
+      - name: Lint example configs
+        run: ./bin/bento-twilio lint workflow.yaml examples/mms.yaml examples/content_template.yaml
